@@ -66,21 +66,31 @@ class JSBSimEnv(gym.Env):
 
         """
 
-        if action is not None:
+        # if action is not None:
+        #     pass
             #print(action, self.action_space)
             #nb_action = 0
             # for x in action:
             #    nb_action += 1
             # print(nb_action)
             # print(len(self.action_space.spaces))
-            if not len(action) == len(self.action_space.spaces):
-                raise ValueError(
-                    'mismatch between action and action space size')
+            # if not len(action) == len(self.action_space.spaces):
+            #     raise ValueError(
+            #         'mismatch between action and action space size')
+
+        # If we aren't asking the agent to control the rudder, append 0.0 for it:
+        if len(action) == 3:
+            action = np.append(action, 0.0)
 
         self.state = self.make_step(action)
 
         reward, done, info = self.task.get_reward(self.state, self.sim), self.is_terminal(), {}
-        state = self.state if not done else self._get_clipped_state() # returned state should be in observation_space
+        state = self.state
+        # if done:
+        #    state = self._get_clipped_state() # returned state should be in observation_space
+
+        # print(f"*******************\n\tAction: {action}\n\tState: {state}\n\tReward: {reward}\n********************")
+
 
         return state, reward, done, info
 
@@ -96,6 +106,7 @@ class JSBSimEnv(gym.Env):
 
 
         """
+
         # take actions
         if action is not None:
             self.sim.set_property_values(self.task.get_action_var(), action)
@@ -116,7 +127,10 @@ class JSBSimEnv(gym.Env):
         if self.sim:
             self.sim.close()
 
-        self.sim = Simulation(aircraft_name=self.task.aircraft_name, init_conditions=self.task.init_conditions, jsbsim_freq=self.task.jsbsim_freq, agent_interaction_steps=self.task.agent_interaction_steps)
+        self.sim = Simulation(aircraft_name=self.task.aircraft_name,
+                              init_conditions=self.task.get_init_conditions(),
+                              jsbsim_freq=self.task.get_jsbsim_freq(),
+                              agent_interaction_steps=self.task.get_agent_interaction_steps())
 
         self.state = self.get_observation()
 
@@ -162,7 +176,19 @@ class JSBSimEnv(gym.Env):
 
         :param mode: str, the mode to render with
         """
-        return self.task.render(self.sim, mode=mode, **kwargs)
+        # self.task.render(self.sim, mode=mode, **kwargs)
+        self.task.render(self.sim, **kwargs)
+
+        # This version of output doesn't work, let the task spit out something useful:
+        # output = self.task.get_output()
+        #
+        # if mode == 'human':
+        #     pass
+        # elif mode == 'csv':
+        #     pass
+        # else:
+        #     pass
+
 
     def seed(self, seed=None):
         """
@@ -213,14 +239,16 @@ class JSBSimEnv(gym.Env):
 
         """
         obs_list = self.sim.get_property_values(self.task.get_observation_var())
-        return tuple([np.array([obs]) for obs in obs_list])
+        obs = tuple([np.array([obs]) for obs in obs_list])
+        return self.task.convertObservation(obs)
 
     def get_sim_time(self):
         """ Gets the simulation time from sim, a float. """
         return self.sim.get_sim_time()
 
     def get_state(self):
-        return self.sim.get_sim_state()
+        raise NotImplementedError("To be implemented")
+        #return self.sim.get_sim_state()
 
     def _get_clipped_state(self):
         clipped = [
@@ -230,5 +258,6 @@ class JSBSimEnv(gym.Env):
         return tuple(clipped)
 
     def set_state(self, state):
-        self.sim.set_sim_state(state)
-        self.state = self.get_observation()
+        raise NotImplementedError("To be implemented")
+        #self.sim.set_sim_state(state)
+        #self.state = self.get_observation()

@@ -17,8 +17,8 @@ class Task:
     state_var = None
     init_conditions = None
     output = state_var
-    jsbsim_freq = 60
-    agent_interaction_steps = 5
+    jsbsim_freq = 60  # Sim moves as 60Hz
+    agent_interaction_steps = 30  # We get asked for input every 30 frames. (0.5 seconds)
     aircraft_name = 'A320'
 
     def __init__(self):
@@ -113,3 +113,18 @@ class Task:
 
     def define_is_terminal(self, func):
         self.is_terminal = MethodType(func, self)
+
+    def reset(self):
+        pass
+
+    def convertObservation(self, observation):
+        return observation
+
+    def get_init_conditions(self):
+        return self.init_conditions
+
+    def get_jsbsim_freq(self):
+        return self.jsbsim_freq
+
+    def get_agent_interaction_steps(self):
+        return self.agent_interaction_steps
