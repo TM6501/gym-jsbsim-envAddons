@@ -143,8 +143,8 @@ class MaintainAltitudeTask(Task):
 
         # If the sim is about to stop due to being out of the acceptable
         # altitude range, take a big hit:
-        if d_alt >= self.worstCaseAltitudeDelta:
-            reward = -100.0
+        # if d_alt >= self.worstCaseAltitudeDelta:
+        #     reward = -100.0
 
         # If you managed to last until the end of the scenario without going
         # outside the acceptable altitude, get a big bonus:

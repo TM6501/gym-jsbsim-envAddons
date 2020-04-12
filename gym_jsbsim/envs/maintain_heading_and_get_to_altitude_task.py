@@ -176,10 +176,10 @@ class MaintainHeadingAndGetToAltitudeTask(Task):
 
         # If the sim is about to stop due to being out of the acceptable
         # altitude or heading range or due to extreme state, add a big penalty:
-        if d_alt >= self.worstCaseAltitudeDelta or \
-          d_heading >= self.worstCaseHeadingDelta or \
-          bool(sim.get_property_value(c.detect_extreme_state)):
-            reward = -100.0
+        # if d_alt >= self.worstCaseAltitudeDelta or \
+        #   d_heading >= self.worstCaseHeadingDelta or \
+        #   bool(sim.get_property_value(c.detect_extreme_state)):
+        #     reward = -100.0
 
         # If you managed to last until the end of the scenario without going
         # outside the acceptable altitude or heading, get a big bonus:
