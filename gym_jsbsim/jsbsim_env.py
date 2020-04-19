@@ -65,18 +65,7 @@ class JSBSimEnv(gym.Env):
             info: auxiliary information
 
         """
-
-        # if action is not None:
-        #     pass
-            #print(action, self.action_space)
-            #nb_action = 0
-            # for x in action:
-            #    nb_action += 1
-            # print(nb_action)
-            # print(len(self.action_space.spaces))
-            # if not len(action) == len(self.action_space.spaces):
-            #     raise ValueError(
-            #         'mismatch between action and action space size')
+        self.task.notifyAction(action)
 
         # If we aren't asking the agent to control the rudder, append 0.0 for it:
         if len(action) == 3:
@@ -128,7 +117,7 @@ class JSBSimEnv(gym.Env):
             self.sim.close()
 
         self.sim = Simulation(aircraft_name=self.task.aircraft_name,
-                              init_conditions=self.task.get_init_conditions(),
+                              init_conditions=self.task.get_initial_conditions(),
                               jsbsim_freq=self.task.get_jsbsim_freq(),
                               agent_interaction_steps=self.task.get_agent_interaction_steps())
 
@@ -220,8 +209,6 @@ class JSBSimEnv(gym.Env):
 
     def close(self):
         """ Cleans up this environment's objects
-
-
 
         Environments automatically close() when garbage collected or when the
 
