@@ -12,45 +12,6 @@ import numpy as np
 
 class MaintainAltitudeAndHeadingTask(Task):
 
-    state_var = [
-      c.delta_altitude,
-      c.delta_heading,
-      c.velocities_v_down_fps,
-      c.velocities_vc_fps,
-      c.velocities_p_rad_sec,
-      c.velocities_q_rad_sec,
-      c.velocities_r_rad_sec
-    ]
-
-    action_var = [
-      c.fcs_aileron_cmd_norm,
-      c.fcs_elevator_cmd_norm,
-      c.fcs_throttle_cmd_norm,
-      c.fcs_rudder_cmd_norm,
-    ]
-
-    init_conditions = {
-      c.ic_h_sl_ft: 10000,
-      c.ic_terrain_elevation_ft: 0,
-      c.ic_long_gc_deg: 1.442031,
-      c.ic_lat_geod_deg: 43.607181,
-      c.ic_u_fps: 800,
-      c.ic_v_fps: 0,
-      c.ic_w_fps: 0,
-      c.ic_p_rad_sec: 0,
-      c.ic_q_rad_sec: 0,
-      c.ic_r_rad_sec: 0,
-      c.ic_roc_fpm: 0,
-      c.ic_psi_true_deg: 100,
-      c.target_heading_deg: 100,
-      c.target_altitude_ft: 10000,
-      c.fcs_throttle_cmd_norm: 0.8,
-      c.fcs_mixture_cmd_norm: 1,
-      c.gear_gear_pos_norm : 0,
-      c.gear_gear_cmd_norm: 0,
-      c.steady_flight:150
-    }
-
     def __init__(self, floatingAction=True):
        super().__init__()
        # Variables we want to track and output at render time:
@@ -67,6 +28,9 @@ class MaintainAltitudeAndHeadingTask(Task):
        # How screwed is too screwed?
        self.worstCaseAltitudeDelta = 3000
        self.worstCaseHeadingDelta = 110
+
+       # Longer sim time to hopefully force the agent to not just 'get lucky':
+       self.maxSimTime = 8000
 
        self.floatingAction = floatingAction
 
@@ -146,16 +110,9 @@ class MaintainAltitudeAndHeadingTask(Task):
 
         reward = (0.5 * altitudeReward) + (0.5 * headingReward)
 
-        # If the sim is about to stop due to being out of the acceptable
-        # altitude or heading range or due to extreme state, add a big penalty:
-        # if d_alt >= self.worstCaseAltitudeDelta or \
-        #   d_heading >= self.worstCaseHeadingDelta or \
-        #   bool(sim.get_property_value(c.detect_extreme_state)):
-        #     reward = -100.0
-
         # If you managed to last until the end of the scenario without going
         # outside the acceptable altitude or heading, get a big bonus:
-        if sim.get_property_value(c.simulation_sim_time_sec) >= 2000.0:
+        if sim.get_property_value(c.simulation_sim_time_sec) >= self.maxSimTime:
             reward = 100.0
 
         self.mostRecentRewards = {
@@ -172,7 +129,7 @@ class MaintainAltitudeAndHeadingTask(Task):
     def is_terminal(self, state, sim):
         # Run for a maximum of 2000 seconds or until we're way outside the
         # the altitude requirements, or put the plane in a bad state.
-        retVal = sim.get_property_value(c.simulation_sim_time_sec) >= 2000 or \
+        retVal = sim.get_property_value(c.simulation_sim_time_sec) >= self.maxSimTime or \
                  math.fabs(sim.get_property_value(c.delta_altitude)) >= self.worstCaseAltitudeDelta or \
                  math.fabs(sim.get_property_value(c.delta_heading)) >= self.worstCaseHeadingDelta or \
                  bool(sim.get_property_value(c.detect_extreme_state))

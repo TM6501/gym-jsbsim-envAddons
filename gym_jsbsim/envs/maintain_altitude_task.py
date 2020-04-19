@@ -64,6 +64,9 @@ class MaintainAltitudeTask(Task):
        self.stepCount = 0
        self.simTime = 0
 
+       # Longer sim time to hopefully force the agent to not just 'get lucky':
+       self.maxSimTime = 8000
+
        # How screwed is too screwed?
        self.worstCaseAltitudeDelta = 3000
 
@@ -141,14 +144,9 @@ class MaintainAltitudeTask(Task):
 
         reward = (self.worstCaseAltitudeDelta - d_alt) / self.worstCaseAltitudeDelta
 
-        # If the sim is about to stop due to being out of the acceptable
-        # altitude range, take a big hit:
-        # if d_alt >= self.worstCaseAltitudeDelta:
-        #     reward = -100.0
-
         # If you managed to last until the end of the scenario without going
         # outside the acceptable altitude, get a big bonus:
-        if sim.get_property_value(c.simulation_sim_time_sec) >= 2000.0:
+        if sim.get_property_value(c.simulation_sim_time_sec) >= self.maxSimTime:
             reward = 100.0
 
         self.mostRecentRewards = {
@@ -164,7 +162,7 @@ class MaintainAltitudeTask(Task):
     def is_terminal(self, state, sim):
         # Run for a maximum of 2000 seconds or until we're way outside the
         # the altitude requirements, or put the plane in a bad state.
-        retVal = sim.get_property_value(c.simulation_sim_time_sec) >= 2000 or \
+        retVal = sim.get_property_value(c.simulation_sim_time_sec) >= sim.maxSimTime or \
                  math.fabs(sim.get_property_value(c.delta_altitude)) >= self.worstCaseAltitudeDelta or \
                  bool(sim.get_property_value(c.detect_extreme_state))
 

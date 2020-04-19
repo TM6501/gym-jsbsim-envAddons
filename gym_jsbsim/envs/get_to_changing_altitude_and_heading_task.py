@@ -7,7 +7,8 @@ import numpy as np
 
 """
     A task in which the agent must perform steady, level flight maintaining its initial heading.
-    Every 150 sec a new target heading is set.
+    Once the agent has been on heading/altitude for 30 seconds, a new goal
+    heading and altitude is selected.
 """
 
 class GetToChangingAltitudeAndHeadingTask(Task):
@@ -52,9 +53,6 @@ class GetToChangingAltitudeAndHeadingTask(Task):
     }
 
     def get_init_conditions(self):
-       # Random heading and altitude goals:
-       headingGoal = random.uniform(65.0, 135.0)
-       altitudeGoal = random.uniform(8500.0, 11500.0)
        GetToChangingAltitudeAndHeadingTask.init_conditions = {
          c.ic_h_sl_ft: 10000,
          c.ic_terrain_elevation_ft: 0,
@@ -68,8 +66,8 @@ class GetToChangingAltitudeAndHeadingTask(Task):
          c.ic_r_rad_sec: 0,
          c.ic_roc_fpm: 0,
          c.ic_psi_true_deg: 100,
-         c.target_heading_deg: headingGoal,
-         c.target_altitude_ft: altitudeGoal,
+         c.target_heading_deg: self.currHeadingGoal,
+         c.target_altitude_ft: self.currAltitudeGoal,
          c.fcs_throttle_cmd_norm: 0.8,
          c.fcs_mixture_cmd_norm: 1,
          c.gear_gear_pos_norm : 0,
@@ -78,6 +76,46 @@ class GetToChangingAltitudeAndHeadingTask(Task):
 
        return GetToChangingAltitudeAndHeadingTask.init_conditions
 
+    def getNewHeadingAndAltitudeTargets(self, currHeadingGoal, currAltitudeGoal, onCount):
+        # Make sure the agent can't learn to always start turning a specific
+        # direction or gaining/losing altitude, and that it can't correlate
+        # heading change with altitude change.
+        headingMult, altitudeMult = 1, 1
+        if random.randint(0,1) == 0:
+            headingMult = -1
+        if random.randint(0,1) == 0:
+            altitudeMult = -1
+
+        # As onCount increases, we increase the amount of heading change and
+        # altitude change required:
+        newHeadingGoal = currHeadingGoal + \
+          (headingMult * random.uniform(10.0 + (onCount * 5), 20.0 + (onCount * 10)))
+
+        # Yes, headings will eventually swing around and we may end up asking
+        # the agent to make a very slight turn.  That is okay; it should learn
+        # to do that, too.
+        newHeadingGoal = (round(newHeadingGoal) + 360) % 360
+
+        newAltitudeGoal = currAltitudeGoal + \
+          (altitudeMult * random.uniform(300.0 + (onCount * 200), 500.0 + (onCount * 400)))
+
+        # If we're outside the acceptable range, flip the multiplier and try again:
+        if newAltitudeGoal < self.minTargetAltitude or newAltitudeGoal > self.maxTargetAltitude:
+            altitudeMult *= -1
+            newAltitudeGoal = currAltitudeGoal + \
+              (altitudeMult * random.uniform(300.0 + (onCount * 200), 500.0 + (onCount * 400)))
+
+        # Still outside the acceptable range? Choose something guaranteed to be safe:
+        if newAltitudeGoal < self.minTargetAltitude or newAltitudeGoal > self.maxTargetAltitude:
+            newAltitudeGoal = random.uniform(self.minTargetAltitude, self.maxTargetAltitude)
+
+        return newHeadingGoal, newAltitudeGoal
+
+        ########################
+        # This is returning bad heading / altitude goals (NaN).
+        # Need to figure out why.
+        ########################
+
     def __init__(self, floatingAction=True):
        super().__init__()
        # Variables we want to track and output at render time:
@@ -85,21 +123,43 @@ class GetToChangingAltitudeAndHeadingTask(Task):
        self.stopReason = None
        self.otherInfo = None
        self.simStopInfo = None
-       self.numTargetChanges = 0
+
+       # Selecting random altitudes to aim for, we need reasonable bounds:
+       self.minTargetAltitude = 1000
+       self.maxTargetAltitude = 20000
+
+       # Count how many times we got on heading and altitude to reward the agent:
+       self.onHeadingAndAltCount = 0
+       self.onHeadingAndAltStartTime = None
+       self.onAltitudeAndHeadingChangeTime = 30.0
+       self.maxSimTime = 8000.0
+       self.currHeadingGoal, self.currAltitudeGoal = self.getNewHeadingAndAltitudeTargets(100, 10000, 0)
 
        # Debug to count:
        self.stepCount = 0
        self.simTime = 0
 
        # How screwed is too screwed?
-       self.worstCaseAltitudeDelta = 3000
-       self.worstCaseHeadingDelta = 110
+       self.worstCaseAltitudeDelta = 20000  # Wide range for possible large changes in goal altitude.
+       self.worstCaseHeadingDelta = 180.0  # Always within this bound.
+
+       # Hard version (Airforce standard):
+       # self.onHeadingDifference = 5.0
+       # self.onAltitudeDifference = 200.0
+
+       # Medium:
+       # self.onHeadingDifference = 7.5
+       # self.onAltitudeDifference = 300.0
+
+       # Easy:
+       self.onHeadingDifference = 10.0
+       self.onAltitudeDifference = 400.0
 
        self.floatingAction = floatingAction
 
        # Fill the min/max for our output conversion:
        self.observation_minMaxes = []
-       for prop in MaintainAltitudeAndGetToHeadingTask.state_var:
+       for prop in GetToChangingAltitudeAndHeadingTask.state_var:
           self.observation_minMaxes.append([prop.min, prop.max])
 
        print(f"Prop min/maxes:\n{self.observation_minMaxes}")
@@ -107,9 +167,6 @@ class GetToChangingAltitudeAndHeadingTask(Task):
        # change that variable:
        self.observation_minMaxes[0] = [-self.worstCaseAltitudeDelta,
                                        self.worstCaseAltitudeDelta]
-
-       # The deltaHeading will get stopped at 110 degrees off, but let the
-       # [-180, 180] range remain in place.
 
        # Assume floating point:
        # All actions are [-1, 1] except throttle which goes [0, 0.9]:
@@ -157,25 +214,13 @@ class GetToChangingAltitudeAndHeadingTask(Task):
        self.stopReason = None
        self.otherInfo = None
        self.simStopInfo = None
-       self.numTargetChanges = 0
 
        # Count how many times we got on heading and altitude to reward the agent:
        self.onHeadingAndAltCount = 0
        self.onHeadingAndAltStartTime = None
-       self.onAltitudeAndHeadingChangeTime = 15.0
-       self.maxSimTime = 4000.0
-
-       # Hard version (Airforce standard):
-       # self.onHeadingDifference = 5.0
-       # self.onAltitudeDifference = 200.0
-
-       # Medium:
-       # self.onHeadingDifference = 7.5
-       # self.onAltitudeDifference = 300.0
-
-       # Easy:
-       self.onHeadingDifference = 10.0
-       self.onAltitudeDifference = 400.0
+       self.onAltitudeAndHeadingChangeTime = 30.0
+       self.maxSimTime = 8000.0
+       self.currHeadingGoal, self.currAltitudeGoal = self.getNewHeadingAndAltitudeTargets(100, 10000, 0)
 
        # Debug to count:
        self.stepCount = 0
@@ -183,6 +228,7 @@ class GetToChangingAltitudeAndHeadingTask(Task):
 
     def get_reward(self, state, sim):
         """Reward a plane for staying on altitude and heading."""
+
         d_alt = abs(sim.get_property_value(c.delta_altitude))
         altitudeReward = (self.worstCaseAltitudeDelta - d_alt) / self.worstCaseAltitudeDelta
 
@@ -192,13 +238,8 @@ class GetToChangingAltitudeAndHeadingTask(Task):
         # Reward for your altitude and heading plus additional reward for how
         # many times you found the goal. This reward is larger than the best
         # possible on-alt and on-heading reward to encourage agents to get to
-        # the target altitude and heading as frequently as possible.
+        # the target altitude and heading as frequently/quickly as possible.
         reward = (0.1 * altitudeReward) + (0.1 * headingReward) + (0.2 * float(self.onHeadingAndAltCount))
-
-        # If you managed to last until the end of the scenario without going
-        # outside the acceptable altitude or heading, get a big bonus:
-        # if sim.get_property_value(c.simulation_sim_time_sec) >= 2000.0:
-        #     reward = 100.0
 
         self.mostRecentRewards = {
          'delta_alt': d_alt,
@@ -210,13 +251,25 @@ class GetToChangingAltitudeAndHeadingTask(Task):
         self.stepCount += 1
         self.simTime = sim.get_property_value(c.simulation_sim_time_sec)
 
+        # Are we about to return NaN?
+        if math.isnan(reward):
+            print(f"""d_alt: {d_alt},
+                    altitudeReward: {altitudeReward},
+                    worstCaseAlt: {self.worstCaseAltitudeDelta},
+                    d_heading: {d_heading},
+                    headingReward: {headingReward},
+                    worstCaseHeading: {self.worstCaseHeadingDelta},
+                    onCount: {self.onHeadingAndAltCount},
+                    reward: {reward}""")
+            raise RuntimeError()
+
         return reward
 
     def getOnHeadingAndAltitude(self, state, sim):
         d_alt = math.fabs(sim.get_property_value(c.delta_altitude))
         d_heading = math.fabs(sim.get_property_value(c.delta_heading))
 
-        if d_alt <= self.onAltitudeDifference and d_heading <= self.onAltitudeDifference:
+        if d_alt <= self.onAltitudeDifference and d_heading <= self.onHeadingDifference:
             return True
         else:
             return False
@@ -236,17 +289,22 @@ class GetToChangingAltitudeAndHeadingTask(Task):
                # For now, choose random new heading and altitude goals. Later,
                # we may want to make sure that every time it gets a bit harder
                # by making the heading/altitude difference bigger.
-               headingGoal = random.uniform(65.0, 135.0)
-               altitudeGoal = random.uniform(8500.0, 11500.0)
-               sim.set_property_value(c.target_altitude_ft, altitudeGoal)
-               sit.set_property_value(c.target_heading_deg, headingGoal)
+               self.currHeadingGoal, self.currAltitudeGoal = \
+                 self.getNewHeadingAndAltitudeTargets(self.currHeadingGoal,
+                                                      self.currAltitudeGoal,
+                                                      self.onHeadingAndAltCount)
+
+               sim.set_property_value(c.target_altitude_ft, self.currAltitudeGoal)
+               sim.set_property_value(c.target_heading_deg, self.currHeadingGoal)
                self.onHeadingAndAltStartTime = None
 
         else: # Not on alt/heading? Reset the counter.
            self.onHeadingAndAltStartTime = None
 
-        # Run for a maximum of 2000 seconds or until we're way outside the
-        # the altitude requirements, or put the plane in a bad state.
+        # Run for a maximum of time or until we're way out of bounds.
+        # Worst-case heading delta when selecting random new headings to aim for
+        # is now 180, so that check will never fail. It is left in as a reminder
+        # as we build other events to check for it.
         retVal = sim.get_property_value(c.simulation_sim_time_sec) >= self.maxSimTime or \
                  math.fabs(sim.get_property_value(c.delta_altitude)) >= self.worstCaseAltitudeDelta or \
                  math.fabs(sim.get_property_value(c.delta_heading)) >= self.worstCaseHeadingDelta or \
