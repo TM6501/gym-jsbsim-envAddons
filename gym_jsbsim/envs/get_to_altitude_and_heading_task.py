@@ -5,6 +5,13 @@ import math
 import random
 import numpy as np
 
+"""
+@author: Joseph Williams
+
+This task hasn't been updated been updated since the most recent task updates.
+It may be somewhat out of date.
+"""
+
 class GetToAltitudeAndHeadingTask(Task):
 
     def getStartHeadingAndAltitude(self):
@@ -47,33 +54,19 @@ class GetToAltitudeAndHeadingTask(Task):
 
        altitude = 10000.0
        if self.initAltitudeChoice == 0:
-           altitude = random.uniform(12500.0, 13500.0)
+           altitude = random.uniform(15500.0, 16500.0)
        elif self.initAltitudeChoice == 1:
-           altitude = random.uniform(11000.0, 12000.0)
+           altitude = random.uniform(12000.0, 13000.0)
        elif self.initAltitudeChoice == 2:
-           altitude = random.uniform(8000.0, 9000.0)
+           altitude = random.uniform(7000.0, 8000.0)
        elif self.initAltitudeChoice == 3:
-           altitude = random.uniform(6500.0, 7500.0)
+           altitude = random.uniform(3500.0, 4500.0)
        else:
            tempInt = random.randint(0,1)
            if tempInt == 0:
-               altitude = random.uniform(6500.0, 9000.0)
+               altitude = random.uniform(3500.0, 8000.0)
            else:
-               altitude = random.uniform(11000.0, 13500.0)
-
-       # DEBUG: Try smaller diffs from start:
-       # Above larger heading/altitue delta-targets are not allowing the
-       # agent to train.
-       # if random.randint(0,1) == 0:
-       #     heading = random.uniform(65.0, 75.0)
-       # else:
-       #     heading = random.uniform(125.0, 135.0)
-       #
-       # if random.randint(0,1) == 0:
-       #     altitude = random.uniform(8500.0, 9000.0)
-       # else:
-       #     altitude = random.uniform(11000.0, 11500.0)
-       # END DEBUG
+               altitude = random.uniform(12000.0, 16500.0)
 
        return heading, altitude
 
@@ -110,22 +103,18 @@ class GetToAltitudeAndHeadingTask(Task):
        self.worstCaseAltitudeDelta = 2000 # 7500
        self.worstCaseHeadingDelta = 20 # 180
 
+       # We've fallen into the bad habit of using worstCaseAltitudeDelta for
+       # other things.  Need another variable:
+       self.scenarioOverAltitudeDelta = 15000
+
        # How far can we get off of our goal before we start getting negative rewards?
        self.zeroSwapAltitudeDelta = 4500
        self.zeroSwapHeadingDelta = 110
 
        # Random is too random... we need to force the agent to see left and
        # right turns and only be successful when it accomplishes both.
-       # initHeadingChoice may have already been defined:
-       try:
-           self.initHeadingChoice
-       except:
-           self.initHeadingChoice = random.randint(0,3)
-
-       try:
-           self.initAltitudeChoice
-       except:
-           self.initAltitudeChoice = random.randint(0,4)
+       self.initHeadingChoice = random.randint(0,3)
+       self.initAltitudeChoice = random.randint(0,4)
 
        self.floatingAction = floatingAction
 
@@ -139,19 +128,21 @@ class GetToAltitudeAndHeadingTask(Task):
        self.observation_minMaxes[0] = [-self.worstCaseAltitudeDelta,
                                        self.worstCaseAltitudeDelta]
 
-       # The deltaHeading will get stopped at 110 degrees off, but let the
-       # [-180, 180] range remain in place.
+       # Not currently doing the same with worstCaseHeadingDelta. This seems
+       # to cause errors.  Need to figure out why:
+       # self.observation_minMaxes[1] = [-self.worstCaseHeadingDelta,
+       #                                 self.worstCaseHeadingDelta]
 
        # Assume floating point:
        # All actions are [-1, 1] except throttle which goes [0, 0.9]:
        fullActionSpace = spaces.Box(low=np.array([-1.0, -1.0, 0, -1.0]),
-                                      high=np.array([1.0, 1.0, 0.9, 1.0]),
-                                      dtype=np.float32)
+                                    high=np.array([1.0, 1.0, 0.9, 1.0]),
+                                    dtype=np.float32)
 
        # Our action space if we don't let them control the rudder:
        zeroRudderActionSpace = spaces.Box(low=np.array([-1.0, -1.0, 0]),
-                                      high=np.array([1.0, 1.0, 0.9]),
-                                      dtype=np.float32)
+                                          high=np.array([1.0, 1.0, 0.9]),
+                                          dtype=np.float32)
 
        # self.action_space = fullActionSpace
        self.action_space = zeroRudderActionSpace
@@ -173,15 +164,17 @@ class GetToAltitudeAndHeadingTask(Task):
 
     def is_terminal(self, state, sim):
         timeOut = sim.get_property_value(c.simulation_sim_time_sec) >= self.maxSimTime
-        altitudeOut = math.fabs(sim.get_property_value(c.delta_altitude)) >= 15000
+        altitudeOut = math.fabs(sim.get_property_value(c.delta_altitude)) >= self.scenarioOverAltitudeDelta
         extremeOut = bool(sim.get_property_value(c.detect_extreme_state))
 
         retVal = timeOut or altitudeOut or extremeOut
         return retVal
 
     def convertObservation(self, observation):
+       # Convert the observation we get to a data type we like:
        retObs = np.array(observation).reshape(-1)
 
+       # Get every observation to [-1.0, 1.0]
        for i in range(len(retObs)):
           retObs[i] = (((retObs[i] - self.observation_minMaxes[i][0]) / (self.observation_minMaxes[i][1] - self.observation_minMaxes[i][0])) - 0.5) * 2.0
 
