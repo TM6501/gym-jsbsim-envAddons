@@ -7,16 +7,22 @@ from gym_jsbsim.catalogs.catalog import Catalog as c
 
 class Task:
     """
-
-        A class to subclass in order to create a task with its own observation variables,
-
+        A base class to create a task with its own observation variables,
         action variables, termination conditions and agent_reward function.
+
+        Downloaded from: https://github.com/galleon/gym-jsbsim.git
+        Download date: 2020-02-09
+
+        Modified by: Joe Williams
+
+        When importing into gym, use the classname of the specific environment:
+
+        Environment name: GymJsbsim-<className>-v0
 
     """
     jsbsim_freq = 60  # Sim moves as 60Hz
     agent_interaction_steps = 30  # We get asked for input every 30 frames. (0.5 seconds)
-    aircraft_name = 'A320' # 'f16'
-
+    aircraft_name = 'A320' #'F15' or 'A320'
     terminalReasons = [0, 0, 0, 0]
 
     def __init__(self):
@@ -26,31 +32,31 @@ class Task:
         self.state_var = self.get_state_var()
         self.init_conditions = self.get_initial_conditions()
 
-        # set default output to state_var
-        #if self.output is None:
+        # Set default output to state_var
         self.output = self.state_var
 
         # Variables we output on render:
         self.renderVariables = {}
 
-        # Debug to count:
+        # Counters added to output rendering:
         self.stepCount = 0
         self.simTime = 0
 
         # How far off do we let the agent get before we kill the scenario and
-        # start over?
+        # start over? Most scenarios will override these:
         self.worstCaseAltitudeDelta = 4000
         self.worstCaseHeadingDelta = 180
 
         # How far from our goal do we let our agent get before it switches from
-        # positive to negative rewards:
+        # positive to negative rewards, if negative rewards are being used:
         self.zeroSwapAltitudeDelta = 3000
         self.zeroSwapHeadingDelta = 110
 
-        # Longer sim time to hopefully force the agent to not just 'get lucky':
+        # Long sim time to hopefully force the agent to not just 'get lucky'.
+        # This is often also overriden by specific scenarios:
         self.maxSimTime = 8000
 
-        # modify Catalog to have only the current task properties
+        # Modify the Catalog to have only the current task properties:
         names_away = []
         for name,prop in c.items():
             if not( prop in self.action_var or prop in self.state_var or prop in self.init_conditions or prop in self.output) :
@@ -58,6 +64,9 @@ class Task:
         for name in names_away:
             c.pop(name)
 
+    """Provide a few standard reward functions for environments to choose from.
+    Environments are also free to define their own entirely new reward function.
+    """
     def get_simple_reward_altitude_and_heading(self, state, sim):
         """Reward a plane for staying on altitude and heading."""
         d_alt = abs(sim.get_property_value(c.delta_altitude))
@@ -76,16 +85,59 @@ class Task:
 
         return reward
 
-    def get_even_ranges(self, maxValue, numberSteps):
-        """Get a set of even ranges to stagger increasing/decreasing rewards.
-        """
-        stepSize = maxValue / numberSteps
-        current = stepSize
-        retList = []
-        for i in range(numberSteps):
-            retList.append(round(current, 2))
-            current += stepSize
-        return retList
+    def get_staggered_reward_altitude_and_heading(self, state, sim,
+      numAltitudeStaggerLevels=10, numHeadingStaggerLevels=10,
+      altitudeWorth=0.5, headingWorth=0.5):
+        """Return a reward where each section of the goal is more important than
+        the section before it. Hopefully, this will encourage the agent to be
+        more precise as the difference between 500 feet off and 0 feet off
+        becomes more critical than the difference 2500 and 2000."""
+        altitudeMaxes = self.get_even_ranges(self.worstCaseAltitudeDelta, numAltitudeStaggerLevels)
+        headingMaxes = self.get_even_ranges(self.worstCaseHeadingDelta, numHeadingStaggerLevels)
+
+        # 1/X per value:
+        valuePerAltitude = (1.0 / float(numAltitudeStaggerLevels)) * altitudeWorth
+        valuePerHeading = (1.0 / float(numHeadingStaggerLevels)) * headingWorth
+
+        # Get the altitude full reward:
+        d_alt = abs(sim.get_property_value(c.delta_altitude))
+        altitudeReward = 0
+
+        for altMax in altitudeMaxes:
+            if d_alt <= altMax:
+                altitudeReward += (altMax - d_alt) / altMax
+
+        altitudeReward *= valuePerAltitude
+
+        d_heading = abs(sim.get_property_value(c.delta_heading))
+        headingReward = 0
+        for headingMax in headingMaxes:
+            if d_heading <= headingMax:
+                headingReward += (headingMax - d_heading) / headingMax
+
+        headingReward *= valuePerHeading
+
+        reward = altitudeReward + headingReward
+
+        # With the render variables possibly being used to create CSV files,
+        # we need to spread things out to one per line, even if that makes it
+        # hard for humans to read.  For now, we'll also forgo the detailed
+        # reward vectors:
+        self.renderVariables['rewards'] = {
+          'altitude': sim.get_property_value(c.position_h_sl_ft),
+          'targetAltitude': sim.get_property_value(c.target_altitude_ft),
+          'altitudeReward': altitudeReward,
+          'heading': sim.get_property_value(c.attitude_psi_deg),
+          'targetHeading': sim.get_property_value(c.target_heading_deg),
+          'headingReward': headingReward,
+          'totalReward': reward,
+          # Add lat/lon to our output, even though the agent doesn't use it:
+          'latitude_geod': sim.get_property_value(c.position_lat_geod_deg),
+          'latitude_gc': sim.get_property_value(c.position_lat_gc_deg),
+          'longitude_gc': sim.get_property_value(c.position_long_gc_deg)
+        }
+
+        return reward
 
     def get_staggered_reward_altitude_and_heading_with_negatives(self, state,
       sim, numPositiveAltitudeStaggerLevels=10, numPositiveHeadingStaggerLevels=10,
@@ -175,67 +227,29 @@ class Task:
           'targetHeading': sim.get_property_value(c.target_heading_deg),
           'headingReward': headingReward,
           'totalReward': reward,
+          # Add lat/lon to our output, even though the agent doesn't use it:
+          'latitude_geod': sim.get_property_value(c.position_lat_geod_deg),
+          'latitude_gc': sim.get_property_value(c.position_lat_gc_deg),
+          'longitude_gc': sim.get_property_value(c.position_long_gc_deg)
         }
 
         return reward
 
-    def get_staggered_reward_altitude_and_heading(self, state, sim,
-      numAltitudeStaggerLevels=10, numHeadingStaggerLevels=10,
-      altitudeWorth=0.5, headingWorth=0.5):
-        """Return a reward where each section of the goal is more important than
-        the section before it. Hopefully, this will encourage the agent to be
-        more precise as the difference between 500 feet off and 0 feet off
-        becomes more critical than the difference 2500 and 2000."""
-        altitudeMaxes = self.get_even_ranges(self.worstCaseAltitudeDelta, numAltitudeStaggerLevels)
-        headingMaxes = self.get_even_ranges(self.worstCaseHeadingDelta, numHeadingStaggerLevels)
-
-        # 1/X per value:
-        valuePerAltitude = (1.0 / float(numAltitudeStaggerLevels)) * altitudeWorth
-        valuePerHeading = (1.0 / float(numHeadingStaggerLevels)) * headingWorth
-
-        # Get the altitude full reward:
-        d_alt = abs(sim.get_property_value(c.delta_altitude))
-        altitudeReward = 0
-        # For debugging, record all altitude sub-rewards
-        altitudeRewards = []
-        for altMax in altitudeMaxes:
-            if d_alt <= altMax:
-                altitudeRewards.append( (altMax - d_alt) / altMax )
-                altitudeReward += (altMax - d_alt) / altMax
-
-        altitudeReward *= valuePerAltitude
-
-        d_heading = abs(sim.get_property_value(c.delta_heading))
-        headingReward = 0
-        # For debugging, record all heading sub-rewards
-        headingRewards = []
-        for headingMax in headingMaxes:
-            if d_heading <= headingMax:
-                headingRewards.append( (headingMax - d_heading) / headingMax )
-                headingReward += (headingMax - d_heading) / headingMax
-
-        headingReward *= valuePerHeading
-
-        reward = altitudeReward + headingReward
-
-        # With the render variables possibly being used to create CSV files,
-        # we need to spread things out to one per line, even if that makes it
-        # hard for humans to read.  For now, we'll also forgo the detailed
-        # reward vectors:
-        self.renderVariables['rewards'] = {
-          'altitude': sim.get_property_value(c.position_h_sl_ft),
-          'targetAltitude': sim.get_property_value(c.target_altitude_ft),
-          'altitudeReward': altitudeReward,
-          'heading': sim.get_property_value(c.attitude_psi_deg),
-          'targetHeading': sim.get_property_value(c.target_heading_deg),
-          'headingReward': headingReward,
-          'totalReward': reward,
-        }
-
-        return reward
+    def get_even_ranges(self, maxValue, numberSteps):
+        """Get a set of even ranges to stagger increasing/decreasing rewards.
+        """
+        stepSize = maxValue / numberSteps
+        current = stepSize
+        retList = []
+        for i in range(numberSteps):
+            retList.append(round(current, 2))
+            current += stepSize
+        return retList
 
     def get_reward(self, state, sim):
-        reward = self.get_simple_reward_altitude_and_heading
+        """The individual environments should override this function to change
+        how they provide rewards."""
+        reward = self.get_simple_reward_altitude_and_heading(state, sim)
 
         self.stepCount += 1
         self.simTime = sim.get_property_value(c.simulation_sim_time_sec)
@@ -250,7 +264,10 @@ class Task:
 
         retVal = timeOut or altitudeOut or headingOut or extremeOut
 
-        # Count number of times each failure occurs:
+        # Count number of times each failure occurs. This debugging is left
+        # in because it was helpful in determining ways in which the agent
+        # was learning bad behaviors. Change outputFailureCountsMod in order
+        # to re-activate it.
         outputFailureCountsMod = 0  # Set to anything but 0 to count:
         if retVal and outputFailureCountsMod != 0:
             if timeOut:
@@ -273,7 +290,8 @@ Extreme: {Task.terminalReasons[3]}""")
         return self.state_var
 
     def get_initial_conditions(self):
-        # Define some default initial conditions:
+        # Define some default initial conditions. These are the default if the
+        # individual environment doesn't override them:
         return {
           c.ic_h_sl_ft: 10000,
           c.ic_terrain_elevation_ft: 0,
@@ -293,11 +311,14 @@ Extreme: {Task.terminalReasons[3]}""")
           c.fcs_mixture_cmd_norm: 1,
           c.gear_gear_pos_norm : 0,
           c.gear_gear_cmd_norm: 0,
-          c.steady_flight:150
+          c.steady_flight:150,
+          c.propulsion_tank0_contents_lbs: 45000.0,
+          c.propulsion_tank1_contents_lbs: 45000.0
         }
 
     def get_action_var(self):
-        # Define our default action var, but allow sub-tasks to override:
+        # Define our default action var. These are the default if the
+        # individual environment doesn't override them:
         return [
           c.fcs_aileron_cmd_norm,
           c.fcs_elevator_cmd_norm,
@@ -316,7 +337,7 @@ Extreme: {Task.terminalReasons[3]}""")
           c.velocities_p_rad_sec,  # Roll rate, rad / s  [-2 * pi, 2 * pi]
           c.velocities_q_rad_sec,  # Pitch rate, rad / s [-2 * pi, 2 * pi]
           c.velocities_r_rad_sec,  # Yaw rate, rad / s [-2 * pi, 2 * pi]
-          # Newly added:
+          # Added; not part of initial environments:
           c.attitude_pitch_rad,    # Pitch, rad [-0.5 * pi, 0.5 * pi]
           c.attitude_roll_rad,     # Roll, rad [-pi, pi]
         ]
@@ -356,8 +377,11 @@ Extreme: {Task.terminalReasons[3]}""")
         return gym.spaces.Tuple(space_tuple)
 
     def render(self, mode='human', **kwargs):
-        # Output everything, then reset all so the outputs aren't duplicated:
+        # Output everything, then reset all so the outputs aren't duplicated.
+        # The format and ordering of the output is important; the conversion
+        # to CSV file counts on it.
         outString = f"SimTime: {round(self.simTime, 4)}\nSimSteps: {self.stepCount}"
+
         # For the rest of the values, make sure we have the same order every
         # time by using the sorted list of keys:
         for key in sorted(self.renderVariables.keys()):
@@ -384,7 +408,7 @@ Extreme: {Task.terminalReasons[3]}""")
          }
        }
 
-       # Debug to count:
+       # Other variables that get output:
        self.stepCount = 0
        self.simTime = 0
 
@@ -407,7 +431,7 @@ Extreme: {Task.terminalReasons[3]}""")
                  'velocities_q_deg_sec',  # Pitch rate, rad / s [-2 * pi, 2 * pi]
                  'velocities_r_deg_sec',  # Yaw rate, rad / s [-2 * pi, 2 * pi]
                  'attitude_pitch_deg',    # Pitch, rad [-0.5 * pi, 0.5 * pi]
-                 'attitude_roll_deg']
+                 'attitude_roll_deg']     # Roll, rad [-0.5 * pi, 0.5 * pi]
 
         # Convert all of the radians to degrees to make the output easier to read:
         convertedObservation = []
@@ -426,6 +450,9 @@ Extreme: {Task.terminalReasons[3]}""")
 
         return retDict
 
+    # Nearly every scenario overrides this with a standard copy-pasted
+    # conversion function.  It may be time to just use that as the base class
+    # version.
     def convertObservation(self, observation):
         return observation
 
