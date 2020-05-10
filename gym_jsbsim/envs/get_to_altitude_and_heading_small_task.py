@@ -5,6 +5,20 @@ import math
 import random
 import numpy as np
 
+"""
+@author: Joseph Williams
+
+This task asks the agent to make a very small altitude and heading change.
+The directions of each change is randomized.
+
+Possible enhancements:
+  - Determine why the observation_minMaxes changes for altitude seem mandatory
+    but for heading seem optional. The agent trains to a high level of skill
+    without it. Does this mean we could have accomplished the full-task
+    training by just weighting the altitude goal higher than heading? Or by
+    adding many more altitude reward stagger levels? Worth exploring.
+"""
+
 class GetToAltitudeAndHeadingSmallTask(Task):
 
     def getStartHeadingAndAltitudeChanges(self):
@@ -36,7 +50,7 @@ class GetToAltitudeAndHeadingSmallTask(Task):
        return heading, altitude
 
     def get_initial_conditions(self):
-       # Chang the start heading and altitude:
+       # Change the start heading and altitude:
        headingDiff, altitudeDiff = self.getStartHeadingAndAltitudeChanges()
 
        headingGoal = 100 + headingDiff
@@ -61,7 +75,13 @@ class GetToAltitudeAndHeadingSmallTask(Task):
          c.fcs_mixture_cmd_norm: 1,
          c.gear_gear_pos_norm : 0,
          c.gear_gear_cmd_norm: 0,
-         c.steady_flight:150}
+         c.steady_flight:150,
+         # Start with full fuel and constantly refuel it. Agents trained in this
+         # manner will not deal well with scenarios with significantly less
+         # fuel. The weight of the aircraft is an import factor.
+         c.propulsion_tank0_contents_lbs: 24000.0,
+         c.propulsion_tank1_contents_lbs: 24000.0,
+         c.propulsion_refuel: 1}
 
        return self.init_conditions
 
@@ -71,7 +91,7 @@ class GetToAltitudeAndHeadingSmallTask(Task):
        # How far can we get off of our goal before ending the scenario. We need
        # to set tiny ranges to force precision from our agent:
        self.worstCaseAltitudeDelta = 2000
-       self.worstCaseHeadingDelta = 20
+       self.worstCaseHeadingDelta = 40
 
        # How far can we get off of our goal before we start getting negative rewards?
        # For now we're not using these:
@@ -89,6 +109,10 @@ class GetToAltitudeAndHeadingSmallTask(Task):
        # delta-altitude of 5k, change that variable:
        self.observation_minMaxes[0] = [-self.worstCaseAltitudeDelta,
                                        self.worstCaseAltitudeDelta]
+
+       # Add a conversion for heading, too:
+       self.observation_minMaxes[1] = [-self.worstCaseHeadingDelta,
+                                       self.worstCaseHeadingDelta]
 
        # Assume floating point:
        # All actions are [-1, 1] except throttle which goes [0, 0.9]:
@@ -132,10 +156,37 @@ class GetToAltitudeAndHeadingSmallTask(Task):
     def get_reward(self, state, sim):
         """Reward a plane for staying on altitude and heading."""
         reward = self.get_staggered_reward_altitude_and_heading(
-          state, sim, numAltitudeStaggerLevels=10, numHeadingStaggerLevels=10,
+          state, sim, numAltitudeStaggerLevels=20, numHeadingStaggerLevels=20,
           altitudeWorth=0.5, headingWorth=0.5)
 
         self.stepCount += 1
         self.simTime = sim.get_property_value(c.simulation_sim_time_sec)
 
         return reward
+
+    def is_terminal(self, state, sim):
+        timeOut = sim.get_property_value(c.simulation_sim_time_sec) >= self.maxSimTime
+        altitudeOut = math.fabs(sim.get_property_value(c.delta_altitude)) >= self.worstCaseAltitudeDelta
+        headingOut = math.fabs(sim.get_property_value(c.delta_heading)) >= self.worstCaseHeadingDelta
+        extremeOut = bool(sim.get_property_value(c.detect_extreme_state))
+
+        retVal = timeOut or altitudeOut or headingOut or extremeOut
+
+        # Count number of times each failure occurs:
+        outputFailureCountsMod = 0  # Set to anything but 0 to count:
+        if retVal and outputFailureCountsMod != 0:
+            if timeOut:
+                Task.terminalReasons[0] += 1
+            if altitudeOut:
+                Task.terminalReasons[1] += 1
+            if headingOut:
+                Task.terminalReasons[2] += 1
+            if extremeOut:
+                Task.terminalReasons[3] += 1
+
+            if sum(Task.terminalReasons) % outputFailureCountsMod == 0:
+                print(f"""Terminals - Time: {Task.terminalReasons[0]}, \
+Altitude: {Task.terminalReasons[1]}, Heading: {Task.terminalReasons[2]}, \
+Extreme: {Task.terminalReasons[3]}""")
+
+        return retVal
