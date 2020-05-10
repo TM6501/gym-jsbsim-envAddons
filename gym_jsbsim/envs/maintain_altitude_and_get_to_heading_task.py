@@ -5,6 +5,18 @@ import math
 import random
 import numpy as np
 
+"""
+@author: Joseph Williams
+
+This task is one of many increasing steps of difficulty as the agent-training
+abilities were tested and developed. It asks the agent to get to a heading
+while maintaining its current altitude.
+
+Possible enhancements:
+  - Ensure it is up-to-date with current task.py changes.
+  - Add infinite-fuel change.
+"""
+
 class MaintainAltitudeAndGetToHeadingTask(Task):
 
     def getStartHeading(self):

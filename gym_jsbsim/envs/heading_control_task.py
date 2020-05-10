@@ -8,6 +8,8 @@ import numpy as np
 """
     A task in which the agent must perform steady, level flight maintaining its initial heading.
     Every 150 sec a new target heading is set.
+
+    With the changes to task.py, this task no longer functions properly.
 """
 
 class HeadingControlTask(Task):
@@ -137,6 +139,7 @@ class HeadingControlTask(Task):
         '''
         return self.get_reward_maintain_altitude(state, sim)
 
+        # Old way of changing goals:
         # heading_r = math.exp(-math.fabs(sim.get_property_value(c.delta_heading)))
         # alt_r = math.exp(-math.fabs(sim.get_property_value(c.delta_altitude)))
         # angle_speed_r = math.exp(-(0.1*math.fabs(sim.get_property_value(c.accelerations_a_pilot_x_ft_sec2)) +

@@ -6,9 +6,14 @@ import random
 import numpy as np
 
 """
-    A task in which the agent must perform steady, level flight maintaining its initial heading.
-    Once the agent has been on heading/altitude for 30 seconds, a new goal
-    heading and altitude is selected.
+    @author Joe Williams
+
+    A task in which the agent must perform steady, level flight maintaining its
+    initial heading. Once the agent has been on heading/altitude for 30 seconds,
+    a new goal heading and altitude is selected.
+
+    This task was made before significant changes to task.py were made. It
+    needs updating to function properly.
 """
 
 class GetToChangingAltitudeAndHeadingTask(Task):

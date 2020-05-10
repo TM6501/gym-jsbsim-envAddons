@@ -6,8 +6,14 @@ import random
 import numpy as np
 
 """
-    A task in which the agent must perform steady, level flight maintaining its initial heading.
-    Every 150 sec a new target heading is set.
+A task that just asks the agent to maintain its starting altitude and heading
+indefinitely.
+
+@author: Joseph Williams
+
+Possible enhancements:
+  - Get this task up-to-date with task.py changes. It is so far out of date,
+    it would no longer function.  
 """
 
 class MaintainAltitudeAndHeadingTask(Task):

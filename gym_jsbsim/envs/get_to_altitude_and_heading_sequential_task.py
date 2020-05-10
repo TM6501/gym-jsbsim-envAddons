@@ -5,10 +5,18 @@ import math
 import random
 import numpy as np
 
-"""Since agents seem to have trouble making big jumps in heading and altitude,
+"""
+@author: Joseph Williams
+
+Since agents seem to have trouble making big jumps in heading and altitude,
 we'll ask them to make a series of small adjustments until they reach their
 goal.  The task is for testing that capability; it may not serve well for
-training."""
+training.
+
+This task ended up not being needed since the agent trained on small changes
+was able to make big changes without this sequence hand-feeding the changes
+to the agent.
+"""
 
 class GetToAltitudeAndHeadingSequentialTask(Task):
 
@@ -21,33 +29,6 @@ class GetToAltitudeAndHeadingSequentialTask(Task):
 
     # Number of seconds to remain on goal before the goal changes:
     onGoalTime = 20.0
-
-    # def getStartHeadingAndAltitudeChanges(self):
-    #    # We have a large heading/altitude change goal:
-    #
-    #    # Choose our full altitude change:
-    #    altitudeChoice = random.randint(-1, 1)
-    #
-    #    altitude = 0
-    #    if altitudeChoice == -1:
-    #        altitude = random.uniform(-4500.0, -3500.0)
-    #    elif altitudeChoice == 0:
-    #        altitude = random.uniform(-200.0, 200.0)
-    #    else:
-    #        altitude = random.uniform(3500.0, 4500.0)
-    #
-    #    # Choose our full heading change:
-    #    headingChoice = random.randint(-1, 1)
-    #
-    #    heading = 0
-    #    if headingChoice == -1:
-    #        heading = random.uniform(-85.0, -95.0)
-    #    elif headingChoice == 0:
-    #        heading = random.uniform(-10.0, 10.0)
-    #    else:
-    #        heading = random.uniform(85.0, 95.0)
-    #
-    #    return heading, altitude
 
     def getStartHeadingAndAltitudeChanges(self):
        # We have a large heading/altitude change goal:
@@ -161,19 +142,16 @@ class GetToAltitudeAndHeadingSequentialTask(Task):
        self.observation_minMaxes[0] = [-self.worstCaseAltitudeDelta,
                                        self.worstCaseAltitudeDelta]
 
-       # The deltaHeading will get stopped at 110 degrees off, but let the
-       # [-180, 180] range remain in place.
-
        # Assume floating point:
        # All actions are [-1, 1] except throttle which goes [0, 0.9]:
        fullActionSpace = spaces.Box(low=np.array([-1.0, -1.0, 0, -1.0]),
-                                      high=np.array([1.0, 1.0, 0.9, 1.0]),
-                                      dtype=np.float32)
+                                    high=np.array([1.0, 1.0, 0.9, 1.0]),
+                                    dtype=np.float32)
 
        # Our action space if we don't let them control the rudder:
        zeroRudderActionSpace = spaces.Box(low=np.array([-1.0, -1.0, 0]),
-                                      high=np.array([1.0, 1.0, 0.9]),
-                                      dtype=np.float32)
+                                          high=np.array([1.0, 1.0, 0.9]),
+                                          dtype=np.float32)
 
        # self.action_space = fullActionSpace
        self.action_space = zeroRudderActionSpace
@@ -204,7 +182,6 @@ class GetToAltitudeAndHeadingSequentialTask(Task):
         # due to the extremely strict training:
         altitudeOut = math.fabs(sim.get_property_value(c.delta_altitude)) >= self.worstCaseAltitudeDelta + 1500.0
         headingOut = math.fabs(sim.get_property_value(c.delta_heading)) >= self.worstCaseHeadingDelta + 15.0
-
 
         isTerminal = timeOut or altitudeOut or headingOut or extremeOut
 

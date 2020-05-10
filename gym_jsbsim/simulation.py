@@ -5,6 +5,12 @@ import jsbsim
 from gym_jsbsim.catalogs.catalog import Catalog
 from gym_jsbsim.catalogs.property import Property, CustomProperty
 
+"""
+File originally downloaded from: https://github.com/galleon/gym-jsbsim
+Download date: 2020-02-09
+
+Modifications made by Joe Williams
+"""
 
 class Simulation:
     """

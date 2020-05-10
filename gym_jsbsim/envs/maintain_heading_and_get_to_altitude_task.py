@@ -5,7 +5,18 @@ import math
 import random
 import numpy as np
 
-# Import as "Gymjsbsim-MaintainHeadingAndGetToAltitudeTask-v0"
+"""
+A task that asks the agent to maintain its starting heading while moving to
+a target altitude.
+
+@author: Joseph Williams
+
+Possible enhancements:
+  - Get this task up-to-date with task.py changes. It is so far out of date,
+    it would no longer function.
+  - Infinite fuel option.
+"""
+
 class MaintainHeadingAndGetToAltitudeTask(Task):
 
     def getStartAltitude(self):
